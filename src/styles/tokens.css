@@ -1,0 +1,55 @@
+:root {
+  color-scheme: light;
+  --bg: #f7f3f1;
+  --surface: #ffffff;
+  --surface-2: #f1e9e5;
+  --fg: #2a1f1d;
+  --muted: #7a6863;
+  --line: #e6dbd6;
+  --accent: #8a4b3f;
+  --accent-fg: #ffffff;
+  --accent-soft: #f0ddd6;
+  --gold: #b48a4a;
+
+  /* Só para os selos de situação, sempre com texto junto */
+  --ok: #2f7a4f;
+  --ok-bg: #e3f2e8;
+  --warn: #8a5d0a;
+  --warn-bg: #fbf0d9;
+  --bad: #a6372f;
+  --bad-bg: #f8e1de;
+
+  --font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --font-body: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --tabbar-h: 62px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #1a1413;
+    --surface: #241c1a;
+    --surface-2: #2e2421;
+    --fg: #f3e9e5;
+    --muted: #b39f98;
+    --line: #3d302c;
+    --accent: #e0a593;
+    --accent-fg: #1a1413;
+    --accent-soft: #3e2a25;
+    --gold: #d6b276;
+
+    --ok: #7fd1a0;
+    --ok-bg: #1f3428;
+    --warn: #e8c06c;
+    --warn-bg: #3a2f18;
+    --bad: #f09a90;
+    --bad-bg: #3d2220;
+  }
+}
