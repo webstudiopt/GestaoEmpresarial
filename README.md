@@ -57,7 +57,7 @@ Outros comandos:
 
 ## 6. Publicar no GitHub Pages
 
-1. No repositório do GitHub: **Settings → Secrets and variables → Actions → aba Variables → New repository variable**. Crie:
+1. No repositório do GitHub: **Settings → Secrets and variables → Actions**, na aba **Variables** ou na aba **Secrets** (o workflow aceita as duas). Crie:
    - `VITE_SUPABASE_URL` = URL do projeto (ex.: `https://abcd1234.supabase.co`)
    - `VITE_SUPABASE_ANON_KEY` = a anon key
 2. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
