@@ -1,0 +1,12 @@
+Arquivos do manual da marca (o app já procura por estes nomes):
+
+  logo.png           logo completo para fundo claro (tela de login no tema claro)
+  logo-negativo.png  logo completo em versão clara, para fundo verde ou escuro (cabeçalho)
+  simbolo.png        só o símbolo, fundo transparente (ícone do app no celular)
+
+Depois de colocar o simbolo.png, rode:  npm run icones
+Enquanto os arquivos não existirem, o app mostra o nome "Andrade Concept" em texto
+e usa um ícone provisório "AC".
+
+Fontes (opcional): coloque os arquivos da Cocogoose e da Nexa em public/fonts/
+e veja a seção "Fontes da marca" no README.

@@ -39,7 +39,7 @@ export function ResumoReserva({ obj, completo = false }: { obj: ReservaObjetivo;
         </b>
         <span className="muted num">{pct(r.progresso)}</span>
       </div>
-      <Barra valor={r.progresso} cor="dourado" rotulo={`Progresso da reserva ${obj.nome}`} />
+      <Barra valor={r.progresso} rotulo={`Progresso da reserva ${obj.nome}`} />
       <p className="nota">
         {r.dias > 0 ? `${r.dias} dias até ${dataLonga(obj.data_alvo)}. ` : `Data da meta (${dataLonga(obj.data_alvo)}) chegou. `}
         {r.dias > 0 && (r.falta > 0 ? fraseDoMes(p) : 'Meta atingida.')}
@@ -326,7 +326,6 @@ function PrevisaoReserva({ obj }: { obj: ReservaObjetivo }) {
           </div>
           <Barra
             valor={atual.parcela > 0 ? atual.guardado / atual.parcela : 1}
-            cor="dourado"
             rotulo={`Guardado em ${nomeMes(atual.mes)}`}
           />
           <p className="nota">

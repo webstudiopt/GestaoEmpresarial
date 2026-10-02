@@ -1,26 +1,46 @@
+/* Identidade visual do Andrade Concept (manual da marca).
+   ÚNICO lugar com cores do app: componentes e telas usam só estas variáveis.
+   Tema escuro: segue o sistema; o botão de tema grava data-theme no <html>
+   ("light" ou "dark") e passa por cima da preferência do sistema. */
+
 :root {
   color-scheme: light;
-  --bg: #f7f3f1;
-  --surface: #ffffff;
-  --surface-2: #f1e9e5;
-  --fg: #2a1f1d;
-  --muted: #7a6863;
-  --line: #e6dbd6;
-  --accent: #8a4b3f;
-  --accent-fg: #ffffff;
-  --accent-soft: #f0ddd6;
-  --gold: #b48a4a;
 
-  /* Só para os selos de situação, sempre com texto junto */
-  --ok: #2f7a4f;
-  --ok-bg: #e3f2e8;
-  --warn: #8a5d0a;
-  --warn-bg: #fbf0d9;
-  --bad: #a6372f;
-  --bad-bg: #f8e1de;
+  --fundo: #f4f5f0;
+  --superficie: #ffffff;
+  --superficie-2: #f1e8df;
+  --texto: #050505;
+  --texto-2: #5e564f;
+  --linha: #ddd5cb;
 
-  --font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
-  --font-body: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --principal: #22372b; /* verde floresta: botões, aba ativa, barras de progresso */
+  --sobre-principal: #f4f5f0; /* texto e ícone em cima do --principal */
+  --apoio: #909986; /* verde sálvia */
+  --apoio-2: #ad9f94; /* taupe: nunca como texto sobre fundo claro */
+
+  --dourado: #c58511; /* só decorativo */
+  --dourado-texto: #8a5c0a; /* quando o dourado precisa ser lido */
+  --dourado-degrade: linear-gradient(90deg, #c58511, #daa749, #efcb83);
+
+  /* Situação. Como texto, só --problema passa 4,5:1 no claro; nos selos a cor
+     vai no fundo, na borda e na bolinha, e o texto fica em --texto. */
+  --ok: #3d8b5f;
+  --atencao: #c2620a;
+  --problema: #b3372f;
+  --sobre-problema: #ffffff;
+
+  /* Cabeçalho: verde nos dois temas (no escuro o --principal vira dourado,
+     e dourado não pode ser fundo grande). */
+  --cabecalho: #22372b;
+  --sobre-cabecalho: #f4f5f0;
+
+  --foco: var(--principal);
+  --sombra: rgb(5 5 5 / 0.18);
+
+  /* Fontes: Cocogoose e Nexa se instaladas em public/fonts (ver README);
+     senão Josefin Sans e Montserrat, carregadas do Google Fonts. */
+  --fonte-titulo: 'Cocogoose', 'Josefin Sans', system-ui, sans-serif;
+  --fonte-texto: 'Nexa', 'Montserrat', system-ui, sans-serif;
 
   --radius: 12px;
   --radius-sm: 8px;
@@ -31,25 +51,58 @@
   --safe-right: env(safe-area-inset-right, 0px);
 }
 
+/* Tema escuro: os mesmos valores nos dois blocos (sistema e escolha manual). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     color-scheme: dark;
-    --bg: #1a1413;
-    --surface: #241c1a;
-    --surface-2: #2e2421;
-    --fg: #f3e9e5;
-    --muted: #b39f98;
-    --line: #3d302c;
-    --accent: #e0a593;
-    --accent-fg: #1a1413;
-    --accent-soft: #3e2a25;
-    --gold: #d6b276;
 
-    --ok: #7fd1a0;
-    --ok-bg: #1f3428;
-    --warn: #e8c06c;
-    --warn-bg: #3a2f18;
-    --bad: #f09a90;
-    --bad-bg: #3d2220;
+    --fundo: #0b100d;
+    --superficie: #16211a;
+    --superficie-2: #22372b;
+    --texto: #f4f5f0;
+    --texto-2: #ad9f94;
+    --linha: #2f4035;
+
+    --principal: #efcb83; /* no escuro o destaque é o dourado claro */
+    --sobre-principal: #050505;
+    --apoio: #909986;
+    --apoio-2: #ad9f94;
+
+    --dourado: #efcb83;
+    --dourado-texto: #efcb83;
+
+    /* versões claras: os tons do manual ficam abaixo de 4,5:1 no fundo escuro */
+    --ok: #7cc79a;
+    --atencao: #f2a25c;
+    --problema: #f08a80;
+    --sobre-problema: #050505;
+
+    --sombra: rgb(0 0 0 / 0.5);
   }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --fundo: #0b100d;
+  --superficie: #16211a;
+  --superficie-2: #22372b;
+  --texto: #f4f5f0;
+  --texto-2: #ad9f94;
+  --linha: #2f4035;
+
+  --principal: #efcb83;
+  --sobre-principal: #050505;
+  --apoio: #909986;
+  --apoio-2: #ad9f94;
+
+  --dourado: #efcb83;
+  --dourado-texto: #efcb83;
+
+  --ok: #7cc79a;
+  --atencao: #f2a25c;
+  --problema: #f08a80;
+  --sobre-problema: #050505;
+
+  --sombra: rgb(0 0 0 / 0.5);
 }

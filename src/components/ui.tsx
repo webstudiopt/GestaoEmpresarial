@@ -161,7 +161,7 @@ export function Kpi({ rotulo, valor, sub }: { rotulo: string; valor: string; sub
   )
 }
 
-export function Barra({ valor, cor, rotulo }: { valor: number; cor?: 'dourado'; rotulo: string }) {
+export function Barra({ valor, rotulo }: { valor: number; rotulo: string }) {
   const p = Math.max(0, Math.min(1, valor))
   return (
     <div
@@ -172,7 +172,7 @@ export function Barra({ valor, cor, rotulo }: { valor: number; cor?: 'dourado'; 
       aria-valuemax={100}
       aria-valuenow={Math.round(p * 100)}
     >
-      <i className={cor === 'dourado' ? 'barra--dourado' : ''} style={{ width: `${p * 100}%` }} />
+      <i style={{ width: `${p * 100}%` }} />
     </div>
   )
 }

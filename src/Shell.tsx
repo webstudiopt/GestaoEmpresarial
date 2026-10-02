@@ -9,6 +9,8 @@ import {
   IconeReserva,
   IconeServicos,
 } from './components/Icones'
+import { Logo } from './components/Logo'
+import { useTema } from './data/useTema'
 import { Painel } from './screens/Painel'
 import { Atendimentos } from './screens/Atendimentos'
 import { Servicos } from './screens/Servicos'
@@ -44,6 +46,7 @@ function abaDoHash(): Aba {
 export function Shell() {
   const [aba, setAba] = useState<Aba>(abaDoHash)
   const [mes, setMes] = useState(mesAtual)
+  const tema = useTema()
 
   useEffect(() => {
     const f = () => setAba(abaDoHash())
@@ -63,12 +66,23 @@ export function Shell() {
   return (
     <div className="app">
       <header className="topo">
-        <div className="marca">
-          <small>Studio · Santa Bárbara MG</small>
-          <h1 className="marca__nome">Andrade Concept</h1>
+        <h1 className="topo__marca">
+          <Logo variante="negativo" />
+        </h1>
+        <div className="topo__botoes">
+          <button
+            type="button"
+            className="btn btn--cabecalho btn--pequeno"
+            aria-label={`Tema: ${tema.rotulo}. Tocar para trocar`}
+            onClick={tema.alternar}
+          >
+            {tema.curto}
+          </button>
+          <button type="button" className="btn btn--cabecalho btn--pequeno" onClick={() => supabase.auth.signOut()}>
+            Sair
+          </button>
         </div>
-        <div className="topo__acoes">
-          <div className={`mes ${usaMes ? '' : 'mes--inativo'}`} role="group" aria-label="Mês">
+          <div className={`mes topo__mes ${usaMes ? '' : 'mes--inativo'}`} role="group" aria-label="Mês">
             <button type="button" className="mes__seta" aria-label="Mês anterior" onClick={() => setMes(somarMeses(mes, -1))}>
               ‹
             </button>
@@ -93,10 +107,6 @@ export function Shell() {
               ›
             </button>
           </div>
-          <button type="button" className="btn btn--fantasma btn--pequeno" onClick={() => supabase.auth.signOut()}>
-            Sair
-          </button>
-        </div>
       </header>
 
       <nav className="abas" aria-label="Seções">

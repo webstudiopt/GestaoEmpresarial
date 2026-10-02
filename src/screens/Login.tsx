@@ -1,11 +1,14 @@
 import { useState, type FormEvent } from 'react'
 import { motivoErro, supabase } from '../lib/supabase'
+import { Logo } from '../components/Logo'
+import { useTema } from '../data/useTema'
 
 export function Login() {
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [entrando, setEntrando] = useState(false)
+  const { escuro } = useTema()
 
   async function entrar(e: FormEvent) {
     e.preventDefault()
@@ -19,10 +22,10 @@ export function Login() {
   return (
     <main className="login">
       <form className="login__caixa" onSubmit={entrar}>
-        <div className="marca marca--centro">
-          <small>Studio · Santa Bárbara MG</small>
-          <h1 className="marca__nome">Andrade Concept</h1>
-        </div>
+        <h1 className="marca--centro">
+          {/* key: troca o arquivo quando o tema muda */}
+          <Logo key={escuro ? 'n' : 'p'} variante={escuro ? 'negativo' : 'positivo'} grande />
+        </h1>
         <label className="campo">
           E-mail
           <input

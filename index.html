@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Andrade Concept · Gestão</title>
     <meta name="description" content="Gestão do studio Andrade Concept" />
-    <meta name="theme-color" content="#f7f3f1" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#1a1413" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#22372B" />
     <meta name="color-scheme" content="light dark" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -19,8 +18,16 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Manrope:wght@400;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap"
     />
+    <script>
+      // Tema escolhido no app (antes de desenhar a tela, para não piscar).
+      try {
+        var t = localStorage.getItem('andrade-tema')
+        if (t === 'claro') document.documentElement.dataset.theme = 'light'
+        if (t === 'escuro') document.documentElement.dataset.theme = 'dark'
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

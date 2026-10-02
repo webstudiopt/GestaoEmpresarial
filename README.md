@@ -120,6 +120,48 @@ Quando sai versão nova, o app se atualiza sozinho na próxima abertura.
 
 ---
 
+## Identidade visual
+
+- **Cores:** todas ficam em [`src/styles/tokens.css`](src/styles/tokens.css), com tema claro e escuro. Nenhum outro arquivo tem cor escrita.
+- **Tema:** o botão no cabeçalho alterna entre automático (segue o celular), claro e escuro.
+- **Contraste:** o verde e o laranja de situação não passam 4,5:1 como texto. Nos selos, a cor fica no fundo, na borda e na bolinha, e o texto fica na cor normal. No tema escuro, os três tons de situação são versões mais claras.
+
+### Logo e ícone
+
+Coloque os arquivos do manual em `public/marca/` (veja `public/marca/LEIA-ME.txt`):
+
+| Arquivo | Onde aparece |
+| --- | --- |
+| `logo.png` | Login, tema claro |
+| `logo-negativo.png` | Cabeçalho (fundo verde) e login no tema escuro |
+| `simbolo.png` | Ícone do app no celular: depois de colocar, rode `npm run icones` |
+
+Sem esses arquivos, o app mostra "Andrade Concept" em texto e um ícone provisório "AC".
+
+### Fontes da marca
+
+Hoje o app usa **Josefin Sans** (títulos) e **Montserrat** (textos), do Google Fonts. Para usar as fontes oficiais:
+
+1. Coloque os arquivos em `public/fonts/`, por exemplo `cocogoose.woff2` e `nexa.woff2`.
+2. Adicione no começo de `src/styles/tokens.css`:
+
+```css
+@font-face {
+  font-family: 'Cocogoose';
+  src: url('/fonts/cocogoose.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Nexa';
+  src: url('/fonts/nexa.woff2') format('woff2');
+  font-weight: 400 700;
+  font-display: swap;
+}
+```
+
+As variáveis `--fonte-titulo` e `--fonte-texto` já colocam Cocogoose e Nexa na frente: quando os arquivos existirem, elas passam a valer sozinhas.
+
 ## Como as contas são feitas
 
 As fórmulas ficam em [`src/lib/calc.ts`](src/lib/calc.ts), testadas em [`src/lib/calc.test.ts`](src/lib/calc.test.ts).
