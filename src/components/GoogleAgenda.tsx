@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { EventoInterpretado } from '../lib/agendaGoogle'
 import { brl0, diaSemana } from '../lib/format'
 import type { useAgendaGoogle } from '../data/useAgendaGoogle'
@@ -67,15 +68,73 @@ export function BarraGoogle({ g, pendentes }: { g: Google; pendentes: number }) 
   )
 }
 
+/** Importar de uma vez todos os horários prontos (até hoje, com serviço reconhecido). */
+function ImportarTodos({
+  quantos,
+  ficam,
+  onImportar,
+}: {
+  quantos: number
+  ficam: string
+  onImportar: () => Promise<void>
+}) {
+  const [confirmando, setConfirmando] = useState(false)
+  const [importando, setImportando] = useState(false)
+  if (!quantos) return ficam ? <p className="nota">{ficam}</p> : null
+
+  return (
+    <div className="importar">
+      {!confirmando ? (
+        <button type="button" className="btn btn--largo" onClick={() => setConfirmando(true)}>
+          Importar {quantos} {quantos === 1 ? 'atendimento' : 'atendimentos'} até hoje
+        </button>
+      ) : (
+        <div className="importar__confirmar" role="group" aria-label="Confirmar importação">
+          <p>
+            Registrar {quantos} {quantos === 1 ? 'atendimento' : 'atendimentos'} com o preço do serviço e pagamento{' '}
+            <b>Pix</b>? Depois dá para editar cada um.
+          </p>
+          <div className="form__acoes">
+            <button
+              type="button"
+              className="btn"
+              disabled={importando}
+              onClick={async () => {
+                setImportando(true)
+                await onImportar()
+                setImportando(false)
+                setConfirmando(false)
+              }}
+            >
+              {importando ? 'Importando…' : 'Importar'}
+            </button>
+            <button type="button" className="btn btn--fantasma" onClick={() => setConfirmando(false)}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+      {ficam && <p className="nota">{ficam}</p>}
+    </div>
+  )
+}
+
 /** Horários da Google Agenda ainda sem atendimento registrado. */
 export function ListaAgendados({
   eventos,
   mostrarDia,
   onRegistrar,
+  importaveis,
+  ficam,
+  onImportarTodos,
 }: {
   eventos: EventoInterpretado[]
   mostrarDia: boolean
   onRegistrar: (ev: EventoInterpretado) => void
+  importaveis: number
+  /** explica o que não entra na importação (futuros, sem serviço) */
+  ficam: string
+  onImportarTodos: () => Promise<void>
 }) {
   if (!eventos.length) return null
   return (
@@ -84,6 +143,7 @@ export function ListaAgendados({
         <span>Na Google Agenda, falta registrar</span>
         <span className="num">{eventos.length}</span>
       </div>
+      <ImportarTodos quantos={importaveis} ficam={ficam} onImportar={onImportarTodos} />
       <ul className="lista">
         {eventos.map((ev) => (
           <li key={ev.id} className="item item--agendado">
@@ -92,7 +152,9 @@ export function ListaAgendados({
               <span className="muted">
                 {[
                   mostrarDia ? `${diaSemana(ev.data)}, ${ev.hora}` : ev.hora,
-                  ev.servico ? `${ev.servico.nome} · ${brl0(ev.servico.preco)}` : 'serviço não reconhecido',
+                  ev.servico
+                    ? `${ev.servico.nome} · ${brl0(ev.servico.preco)}${ev.origem_servico === 'historico' ? ' (último que fez)' : ''}`
+                    : 'cliente nova: escolha o serviço',
                 ].join(' · ')}
               </span>
             </div>

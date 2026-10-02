@@ -1,29 +1,34 @@
 import { useState } from 'react'
 import { useDados } from '../data/Dados'
-import { fixosTotal, horaCusto } from '../lib/calc'
+import { horasCusto, separarCustos } from '../lib/calc'
 import { brl, mesAtual, nomeMes, somarMeses } from '../lib/format'
 import type { Config } from '../lib/types'
 import { ConfirmButton, NumeroInput, TextoInput, Vazio } from '../components/ui'
 
-type CampoNumero = keyof Pick<Config, 'imposto' | 'taxa_cartao' | 'lucro_alvo' | 'horas_mes' | 'meta_mes'>
+type CampoNumero = keyof Pick<Config, 'imposto' | 'taxa_cartao' | 'horas_mes' | 'meta_mes'>
 
 // fator: o banco guarda 0,054; a tela mostra 5,4 (%)
 const PARAMETROS: { campo: CampoNumero; rotulo: string; fator: number; casas: number }[] = [
   { campo: 'imposto', rotulo: 'Imposto sobre faturamento (%)', fator: 100, casas: 2 },
-  { campo: 'taxa_cartao', rotulo: 'Taxa da maquininha (%)', fator: 100, casas: 2 },
-  { campo: 'lucro_alvo', rotulo: 'Margem de lucro desejada (%)', fator: 100, casas: 2 },
+  { campo: 'taxa_cartao', rotulo: 'Taxa da maquininha paga por você (%)', fator: 100, casas: 2 },
   { campo: 'horas_mes', rotulo: 'Horas de atendimento por mês', fator: 1, casas: 0 },
   { campo: 'meta_mes', rotulo: 'Meta de faturamento do mês (R$)', fator: 1, casas: 2 },
 ]
 
 export function Custos() {
   const { custos, historico, config, salvarConfig, inserir, atualizar, excluir } = useDados()
-  const total = fixosTotal(custos)
+  const separados = separarCustos(custos)
+  const horas = horasCusto(separados, config.horas_mes)
   const [criando, setCriando] = useState(false)
 
   async function novoCusto() {
     setCriando(true)
-    await inserir('custos', { nome: 'Novo custo', valor: 0, ordem: Math.max(0, ...custos.map((c) => c.ordem)) + 1 })
+    await inserir('custos', {
+      nome: 'Novo custo',
+      valor: 0,
+      pro_labore: false,
+      ordem: Math.max(0, ...custos.map((c) => c.ordem)) + 1,
+    })
     setCriando(false)
   }
 
@@ -56,11 +61,16 @@ export function Custos() {
         ))}
       </div>
       <p className="nota">
-        Com esses números, sua hora custa <b className="num">{brl(horaCusto(total, config.horas_mes))}</b>. Meta e data
-        de cada reserva ficam na aba Reserva.
+        Com esses números, cada hora de atendimento custa <b className="num">{brl(horas.hora_studio)}</b> de studio e{' '}
+        <b className="num">{brl(horas.hora_pro_labore)}</b> do seu pró-labore. Deixe a taxa da maquininha em 0 enquanto
+        ela for repassada para a cliente.
       </p>
 
       <h3>Custos fixos mensais</h3>
+      <p className="nota">
+        Marque <b>Salário</b> na linha do seu pró-labore: ele fica fora do custo dos procedimentos. Valor negativo abate
+        (ex.: a locação das salas).
+      </p>
       {custos.length === 0 ? (
         <Vazio>Nenhum custo cadastrado.</Vazio>
       ) : (
@@ -70,6 +80,7 @@ export function Custos() {
               <tr>
                 <th>Custo</th>
                 <th className="d">Valor/mês</th>
+                <th className="col-check">Salário</th>
                 <th>
                   <span className="sr">Ações</span>
                 </th>
@@ -93,6 +104,14 @@ export function Custos() {
                       onSalvar={(v) => atualizar('custos', c.id, { valor: v })}
                     />
                   </td>
+                  <td className="col-check">
+                    <input
+                      type="checkbox"
+                      aria-label={`${c.nome} é o seu pró-labore`}
+                      checked={c.pro_labore}
+                      onChange={(e) => atualizar('custos', c.id, { pro_labore: e.target.checked })}
+                    />
+                  </td>
                   <td className="d col-acao">
                     <ConfirmButton descricao={`Excluir ${c.nome}`} onConfirm={() => excluir('custos', c.id)} />
                   </td>
@@ -100,10 +119,20 @@ export function Custos() {
               ))}
             </tbody>
             <tfoot>
+              <tr>
+                <td>Custos do studio</td>
+                <td className="d num">{brl(separados.studio)}</td>
+                <td colSpan={2} />
+              </tr>
+              <tr>
+                <td>Pró-labore</td>
+                <td className="d num">{brl(separados.pro_labore)}</td>
+                <td colSpan={2} />
+              </tr>
               <tr className="forte">
                 <td>Total</td>
-                <td className="d num">{brl(total)}</td>
-                <td />
+                <td className="d num">{brl(separados.studio + separados.pro_labore)}</td>
+                <td colSpan={2} />
               </tr>
             </tfoot>
           </table>

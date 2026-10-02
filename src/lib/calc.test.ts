@@ -2,97 +2,140 @@ import { describe, expect, it } from 'vitest'
 import {
   calcularServico,
   fixosTotal,
-  horaCusto,
+  horasCusto,
   maisVendidos,
   mesesAte,
   planoReserva,
   progressoMeta,
   resultadoMes,
   resumoReserva,
+  separarCustos,
   serieFaturamento,
-  taxaMedia,
 } from './calc'
 import { textoWhatsApp } from './catalogo'
 import { lerNumero } from './format'
 import type { Atendimento, Servico } from './types'
 
-// Mesmos números de supabase/seed.sql
+// Custos como ficaram depois da migração (CONTEXTO, seção 5): pró-labore marcado
+// e a locação das salas abatendo R$ 1.700.
 const CUSTOS = [
-  5000, 1400, 33, 98.7, 60, 65.43, 200, 54, 376, 176.98, 25, 71.58, 500, 200, 320.35, 557.14, 66.9, 31.9, 50, 300,
-].map((valor) => ({ valor }))
+  { valor: 6442.69, pro_labore: true }, // Meu salário (pró-labore)
+  ...[1400, 33, 98.7, 60, 65.43, 200, 54, 376, 176.98, 25, 71.58, 300, 200, 320.35, 557.14, 66.9, 31.9, 50, 300].map(
+    (valor) => ({ valor, pro_labore: false }),
+  ),
+  { valor: -1700, pro_labore: false }, // Locação das salas (abate o aluguel)
+]
 
-const PARAMS = { imposto: 0.054, taxa_cartao: 0.035, horas_mes: 100, lucro_alvo: 0.15 }
-
+const PARAMS = { imposto: 0.054, taxa_cartao: 0 }
+const SEPARADOS = separarCustos(CUSTOS)
+const HORAS = horasCusto(SEPARADOS, 100)
 const FIXOS = fixosTotal(CUSTOS)
-const HORA = horaCusto(FIXOS, PARAMS.horas_mes)
 
 describe('custos', () => {
-  it('soma os custos fixos do seed', () => {
-    expect(FIXOS).toBeCloseTo(9586.98, 2)
+  it('custos do studio R$ 2.686,98 e pró-labore R$ 6.442,69', () => {
+    expect(SEPARADOS.studio).toBeCloseTo(2686.98, 2)
+    expect(SEPARADOS.pro_labore).toBeCloseTo(6442.69, 2)
+    expect(FIXOS).toBeCloseTo(2686.98 + 6442.69, 2)
   })
-  it('hora_custo ≈ 95,87', () => {
-    expect(HORA).toBeCloseTo(95.87, 2)
-  })
-  it('taxa média é 15% da taxa do cartão', () => {
-    expect(taxaMedia(0.035)).toBeCloseTo(0.00525, 6)
+  it('hora do studio ≈ 26,87 e hora do pró-labore ≈ 64,43', () => {
+    expect(HORAS.hora_studio).toBeCloseTo(26.87, 2)
+    expect(HORAS.hora_pro_labore).toBeCloseTo(64.43, 2)
   })
   it('horas_mes zero não divide por zero', () => {
-    expect(horaCusto(1000, 0)).toBe(0)
+    expect(horasCusto(SEPARADOS, 0)).toEqual({ hora_studio: 0, hora_pro_labore: 0 })
   })
 })
 
 describe('serviço', () => {
-  it('Soft Hyper: mínimo ≈ R$ 215 e Saudável', () => {
-    const r = calcularServico({ preco: 247, minutos: 100, material: 10 }, PARAMS, HORA)
-    expect(r.custo_real).toBeCloseTo(169.78, 2)
-    expect(r.minimo).toBeCloseTo(214.71, 2)
-    expect(Math.round(r.minimo)).toBe(215)
-    expect(r.por_hora).toBeCloseTo(148.2, 2)
-    expect(r.lucro).toBeCloseTo(247 * (1 - 0.054 - 0.00525) - 169.78, 1)
-    expect(r.margem).toBeCloseTo(r.lucro / 247, 6)
+  // Lucro por hora da tabela final (CONTEXTO, seção 6)
+  it.each([
+    ['Penteado', 180, 50, 5, 171],
+    ['Soft', 230, 90, 10, 112],
+    ['Luxo', 270, 105, 18, 109],
+    ['Classic', 200, 90, 14, 90],
+    ['Lash Lifting', 170, 80, 8, 88],
+    ['Manutenção', 130, 60, 11.5, 85],
+    ['Express', 170, 90, 10, 74],
+    ['Classic amigas', 150, 90, 14, 58],
+    ['Remoção', 30, 20, 3, 49],
+  ])('%s: lucro por hora ≈ R$ %i', (_nome, preco, minutos, material, porHora) => {
+    const r = calcularServico({ preco, minutos, material }, PARAMS, HORAS)
+    expect(Math.round(r.lucro_por_hora)).toBe(porHora)
+  })
+
+  it('Soft: contas detalhadas e Saudável', () => {
+    const r = calcularServico({ preco: 230, minutos: 90, material: 10 }, PARAMS, HORAS)
+    expect(r.custo_real).toBeCloseTo(50.3, 1)
+    expect(r.lucro).toBeCloseTo(230 * 0.946 - r.custo_real, 6)
+    expect(r.sobra_apos_salario).toBeCloseTo(r.lucro - 1.5 * HORAS.hora_pro_labore, 6)
+    expect(r.preco_minimo).toBeCloseTo((r.custo_real + 1.5 * HORAS.hora_pro_labore) / 0.946, 6)
+    expect(r.margem).toBeCloseTo(r.lucro / 230, 6)
     expect(r.selo).toBe('saudavel')
   })
 
-  it('preço especial de R$ 150 dá prejuízo', () => {
-    const r = calcularServico({ preco: 150, minutos: 85, material: 10 }, PARAMS, HORA)
-    expect(r.custo_real).toBeCloseTo(145.82, 2)
-    expect(150).toBeLessThan(r.custo_real / (1 - 0.054))
-    expect(r.selo).toBe('prejuizo')
+  it('preço no mínimo fica Saudável (sobra zero)', () => {
+    const base = calcularServico({ preco: 0, minutos: 90, material: 10 }, PARAMS, HORAS)
+    const r = calcularServico({ preco: base.preco_minimo, minutos: 90, material: 10 }, PARAMS, HORAS)
+    expect(r.sobra_apos_salario).toBeCloseTo(0, 6)
+    expect(r.selo).toBe('saudavel')
   })
 
-  it('entre o limite de prejuízo e o mínimo fica "Abaixo do mínimo"', () => {
-    // Express: custo ≈ 145,82; limite de prejuízo ≈ 154,14; mínimo ≈ 184,41
-    const r = calcularServico({ preco: 170, minutos: 85, material: 10 }, PARAMS, HORA)
-    expect(r.selo).toBe('abaixo')
+  it('Remoção e Classic amigas dão lucro mas não pagam a hora dela', () => {
+    expect(calcularServico({ preco: 30, minutos: 20, material: 3 }, PARAMS, HORAS).selo).toBe('abaixo')
+    expect(calcularServico({ preco: 150, minutos: 90, material: 14 }, PARAMS, HORAS).selo).toBe('abaixo')
+  })
+
+  it('Permuta (R$ 0) é prejuízo', () => {
+    expect(calcularServico({ preco: 0, minutos: 90, material: 12 }, PARAMS, HORAS).selo).toBe('prejuizo')
   })
 })
 
 describe('mês', () => {
+  it('bate com o resultado médio do documento: R$ 12.730 → lucro ≈ 8.676 → sobra ≈ 2.233', () => {
+    // 60 atendimentos, R$ 680 de material no mês
+    const at = Array.from({ length: 60 }, (_, i) => ({
+      valor: i < 10 ? 212.5 : 212.1,
+      pagamento: 'Pix',
+      material: 680 / 60,
+      minutos: 100,
+    })) as Pick<Atendimento, 'valor' | 'pagamento' | 'material' | 'minutos'>[]
+    const r = resultadoMes(at, PARAMS, SEPARADOS)
+    expect(r.faturamento).toBeCloseTo(12730, 2)
+    expect(Math.round(r.lucro)).toBe(8676)
+    expect(Math.round(r.sobra)).toBe(2233)
+  })
+
   const at = [
-    { valor: 247, pagamento: 'Pix', material: 10, minutos: 100 },
-    { valor: 187, pagamento: 'Crédito', material: 11.5, minutos: 80 },
-    { valor: 200, pagamento: 'Débito', material: 5, minutos: 60 },
-    { valor: 70, pagamento: 'Dinheiro', material: 3, minutos: 30 },
+    { valor: 230, pagamento: 'Pix', material: 10, minutos: 90 },
+    { valor: 170, pagamento: 'Crédito', material: 10, minutos: 90 },
+    { valor: 180, pagamento: 'Débito', material: 5, minutos: 50 },
+    { valor: 30, pagamento: 'Dinheiro', material: 3, minutos: 20 },
   ] as Pick<Atendimento, 'valor' | 'pagamento' | 'material' | 'minutos'>[]
 
   it('calcula o resultado do mês', () => {
-    const r = resultadoMes(at, PARAMS, FIXOS)
-    expect(r.faturamento).toBe(704)
+    const r = resultadoMes(at, PARAMS, SEPARADOS)
+    expect(r.faturamento).toBe(610)
     expect(r.quantidade).toBe(4)
-    expect(r.imposto).toBeCloseTo(704 * 0.054, 6)
-    expect(r.taxas).toBeCloseTo((187 + 200) * 0.035, 6)
-    expect(r.material).toBeCloseTo(29.5, 6)
-    expect(r.sobra).toBeCloseTo(704 - 704 * 0.054 - 387 * 0.035 - 29.5 - FIXOS, 6)
-    expect(r.ticket).toBe(176)
-    expect(r.por_hora).toBeCloseTo(704 / 4.5, 6)
+    expect(r.imposto).toBeCloseTo(610 * 0.054, 6)
+    expect(r.taxas).toBe(0) // taxa repassada
+    expect(r.material).toBeCloseTo(28, 6)
+    expect(r.lucro).toBeCloseTo(610 - 610 * 0.054 - 28 - 2686.98, 2)
+    expect(r.sobra).toBeCloseTo(r.lucro - 6442.69, 2)
+    expect(r.ticket).toBe(152.5)
+    expect(r.por_hora).toBeCloseTo(610 / 4.1666667, 4)
+  })
+
+  it('taxa de cartão só entra se não for repassada', () => {
+    const r = resultadoMes(at, { imposto: 0.054, taxa_cartao: 0.035 }, SEPARADOS)
+    expect(r.taxas).toBeCloseTo((170 + 180) * 0.035, 6)
   })
 
   it('mês vazio não quebra', () => {
-    const r = resultadoMes([], PARAMS, FIXOS)
+    const r = resultadoMes([], PARAMS, SEPARADOS)
     expect(r.faturamento).toBe(0)
     expect(r.ticket).toBeNull()
     expect(r.por_hora).toBeNull()
-    expect(r.sobra).toBeCloseTo(-FIXOS, 6)
+    expect(r.sobra).toBeCloseTo(-(2686.98 + 6442.69), 2)
   })
 
   it('meta: falta e atendimentos no ticket', () => {
@@ -153,6 +196,9 @@ describe('catálogo e números', () => {
     const servicos = [
       { id: '1', nome: 'Soft Hyper', categoria: 'Aplicação', preco: 247, minutos: 100, material: 10, descricao: 'Fios em Y', no_catalogo: true, ordem: 1 },
       { id: '2', nome: 'Antigo', categoria: 'Outros', preco: 150, minutos: 85, material: 10, descricao: '', no_catalogo: false, ordem: 2 },
+      // marcado "no catálogo" por engano, mas é preço especial: não pode aparecer
+      { id: '3', nome: 'Soft amigas', categoria: 'Aplicação', preco: 170, minutos: 90, material: 10, descricao: '', no_catalogo: true, ordem: 3, tipo_preco: 'especial', ativo: true },
+      { id: '4', nome: 'Desativado', categoria: 'Outros', preco: 99, minutos: 30, material: 1, descricao: '', no_catalogo: true, ordem: 4, tipo_preco: 'padrao', ativo: false },
     ] as Servico[]
     const t = textoWhatsApp(servicos, '- Sinal de 50%')
     expect(t).toContain('*APLICAÇÕES*')
@@ -160,6 +206,8 @@ describe('catálogo e números', () => {
     expect(t).toContain('_Fios em Y · 1h40_')
     expect(t).toContain('• Sinal de 50%')
     expect(t).not.toContain('Antigo')
+    expect(t).not.toContain('Soft amigas')
+    expect(t).not.toContain('Desativado')
   })
 
   it('lê números no formato brasileiro', () => {
@@ -167,6 +215,9 @@ describe('catálogo e números', () => {
     expect(lerNumero('1.400')).toBe(1400)
     expect(lerNumero('1.400,50')).toBe(1400.5)
     expect(lerNumero('98.7')).toBe(98.7)
+    expect(lerNumero('-1.700')).toBe(-1700)
+    expect(lerNumero('−1.700,50')).toBe(-1700.5)
+    expect(lerNumero('-')).toBeNull()
     expect(lerNumero('')).toBeNull()
     expect(lerNumero('abc')).toBeNull()
   })

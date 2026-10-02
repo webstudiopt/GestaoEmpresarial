@@ -1,4 +1,4 @@
-// Espelha as colunas de supabase/schema.sql (mesmos nomes, snake_case).
+// Espelha as colunas do banco (ver database.md): mesmos nomes, snake_case.
 
 export const CATEGORIAS = ['Aplicação', 'Manutenção', 'Lash lifting', 'Penteado', 'Outros'] as const
 export type Categoria = (typeof CATEGORIAS)[number]
@@ -16,13 +16,36 @@ export interface Servico {
   descricao: string
   no_catalogo: boolean
   ordem: number
+  /** padrao = tabela da cliente; especial = amigas, permuta (nunca no catálogo) */
+  tipo_preco: TipoPreco
+  /** manutenção: prazo máximo desde o procedimento */
+  prazo_retorno_dias: number | null
+  minimo_fios_pct: number | null
+  /** regra de uso (ex.: para quem vale a manutenção) */
+  regra: string
+  /** inativo some do formulário de atendimento e do catálogo */
+  ativo: boolean
 }
+
+export type TipoPreco = 'padrao' | 'especial'
 
 export interface Custo {
   id: string
   nome: string
+  /** pode ser negativo: a locação das salas abate o aluguel */
   valor: number
   ordem: number
+  /** a linha do pró-labore fica fora do custo dos procedimentos */
+  pro_labore: boolean
+}
+
+export interface Cliente {
+  id: string
+  nome: string
+  telefone: string // só dígitos, com DDD
+  preco_especial: boolean
+  obs: string
+  criado_em: string
 }
 
 export interface Atendimento {
@@ -38,6 +61,8 @@ export interface Atendimento {
   pagamento: Pagamento
   obs: string
   criado_em: string
+  cliente_id: string | null
+  taxa_repassada: number
 }
 
 /** Uma reserva (ex.: Licença, Reforma), com meta e data em que o dinheiro precisa estar pronto. */
@@ -78,7 +103,7 @@ export interface Config {
 
 export const CONFIG_PADRAO: Omit<Config, 'user_id'> = {
   imposto: 0.054,
-  taxa_cartao: 0.035,
+  taxa_cartao: 0,
   horas_mes: 100,
   lucro_alvo: 0.15,
   meta_mes: 15000,

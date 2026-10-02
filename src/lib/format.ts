@@ -81,15 +81,18 @@ export function duracao(minutos: number) {
 
 /**
  * Lê número digitado no padrão brasileiro ou com ponto decimal:
- * "1.400" → 1400, "98,70" → 98.7, "98.7" → 98.7, "" → null.
+ * "1.400" → 1400, "98,70" → 98.7, "98.7" → 98.7, "-1.700" → -1700, "" → null.
  */
 export function lerNumero(txt: string): number | null {
   let s = txt.trim().replace(/\s|R\$/g, '')
+  // sinal na frente ("-1.700" ou "−1.700"): lê o resto e devolve negativo
+  const negativo = /^[-−]/.test(s)
+  if (negativo) s = s.slice(1)
   if (!s) return null
   if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.')
   else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '')
   const n = Number(s)
-  return Number.isFinite(n) ? n : null
+  return Number.isFinite(n) ? (negativo ? -n : n) : null
 }
 
 /** 98.7 → "98,7" para mostrar num campo editável */

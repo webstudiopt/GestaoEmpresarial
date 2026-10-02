@@ -1,5 +1,6 @@
 // Contas do negócio. Funções puras: recebem dados, devolvem números.
-// As fórmulas seguem a especificação ao pé da letra; ver calc.test.ts.
+// Modelo de custo: o lucro é SEPARADO do pró-labore (ver CONTEXTO, seção 5).
+// As fórmulas são as mesmas da visão procedimentos_margem do banco; ver calc.test.ts.
 
 import type { Atendimento, Config, Custo, Historico, Reserva, Servico } from './types'
 
@@ -8,68 +9,102 @@ const n = (v: unknown) => {
   return Number.isFinite(x) ? x : 0
 }
 
+/** Saudável: paga o studio e a hora dela. Abaixo: dá lucro, mas não paga a hora dela. Prejuízo: não dá lucro. */
 export type Selo = 'saudavel' | 'abaixo' | 'prejuizo'
 
 export const SELO_TEXTO: Record<Selo, string> = {
   saudavel: 'Saudável',
-  abaixo: 'Abaixo do mínimo',
-  prejuizo: 'Dá prejuízo',
+  abaixo: 'Abaixo da sua hora',
+  prejuizo: 'Prejuízo',
 }
 
-export type Parametros = Pick<Config, 'imposto' | 'taxa_cartao' | 'lucro_alvo' | 'horas_mes'>
-
-/** fixos_total = soma de custos.valor */
+/** Soma de todos os custos do mês, pró-labore incluído. */
 export function fixosTotal(custos: Pick<Custo, 'valor'>[]) {
   return custos.reduce((a, c) => a + n(c.valor), 0)
 }
 
-/** hora_custo = fixos_total / horas_mes */
-export function horaCusto(fixos: number, horas_mes: number) {
-  return horas_mes > 0 ? fixos / horas_mes : 0
+export interface CustosSeparados {
+  /** custos do studio, já com a locação das salas abatendo (valor negativo) */
+  studio: number
+  pro_labore: number
 }
 
-/** taxa_media = taxa_cartao * 0.15 (só ~15% das vendas passam no cartão) */
-export function taxaMedia(taxa_cartao: number) {
-  return n(taxa_cartao) * 0.15
+export function separarCustos(custos: Pick<Custo, 'valor' | 'pro_labore'>[]): CustosSeparados {
+  let studio = 0
+  let pro_labore = 0
+  for (const c of custos) {
+    if (c.pro_labore) pro_labore += n(c.valor)
+    else studio += n(c.valor)
+  }
+  return { studio, pro_labore }
+}
+
+export interface HorasCusto {
+  /** custos do studio ÷ horas de atendimento no mês */
+  hora_studio: number
+  /** pró-labore ÷ horas de atendimento no mês */
+  hora_pro_labore: number
+}
+
+export function horasCusto(c: CustosSeparados, horas_mes: number): HorasCusto {
+  if (!(horas_mes > 0)) return { hora_studio: 0, hora_pro_labore: 0 }
+  return { hora_studio: c.studio / horas_mes, hora_pro_labore: c.pro_labore / horas_mes }
 }
 
 export interface CalculoServico {
   horas: number
+  /** h × hora_studio + material */
   custo_real: number
-  minimo: number
-  por_hora: number
+  /** preço − imposto − custo_real (é daqui que sai o pró-labore) */
   lucro: number
   margem: number
+  lucro_por_hora: number
+  /** lucro − a parte do pró-labore daquele tempo */
+  sobra_apos_salario: number
+  /** preço que paga o studio e a hora dela */
+  preco_minimo: number
   selo: Selo
 }
 
+/** A taxa da maquininha é repassada para a cliente, então não entra aqui. */
 export function calcularServico(
   s: Pick<Servico, 'preco' | 'minutos' | 'material'>,
-  p: Parametros,
-  hora_custo: number,
+  p: Pick<Config, 'imposto'>,
+  h: HorasCusto,
 ): CalculoServico {
   const preco = n(s.preco)
   const imposto = n(p.imposto)
-  const tm = taxaMedia(p.taxa_cartao)
   const horas = n(s.minutos) / 60
-  const custo_real = horas * hora_custo + n(s.material)
-  const divisor = 1 - imposto - tm - n(p.lucro_alvo)
-  const minimo = divisor > 0 ? custo_real / divisor : Infinity
-  const por_hora = horas > 0 ? preco / horas : 0
-  const lucro = preco * (1 - imposto - tm) - custo_real
-  const margem = preco > 0 ? lucro / preco : 0
-  const selo: Selo =
-    preco < custo_real / (1 - imposto) ? 'prejuizo' : preco < minimo ? 'abaixo' : 'saudavel'
-  return { horas, custo_real, minimo, por_hora, lucro, margem, selo }
+  const custo_real = horas * h.hora_studio + n(s.material)
+  const lucro = preco * (1 - imposto) - custo_real
+  const sobra_apos_salario = lucro - horas * h.hora_pro_labore
+  const preco_minimo = imposto < 1 ? (custo_real + horas * h.hora_pro_labore) / (1 - imposto) : Infinity
+  // meio centavo de folga para arredondamento não virar o selo
+  const selo: Selo = lucro <= 0.005 ? 'prejuizo' : sobra_apos_salario < -0.005 ? 'abaixo' : 'saudavel'
+  return {
+    horas,
+    custo_real,
+    lucro,
+    margem: preco > 0 ? lucro / preco : 0,
+    lucro_por_hora: horas > 0 ? lucro / horas : 0,
+    sobra_apos_salario,
+    preco_minimo,
+    selo,
+  }
 }
 
 export interface ResultadoMes {
   faturamento: number
   quantidade: number
   imposto: number
+  /** só se a taxa da maquininha não for repassada (config.taxa_cartao > 0) */
   taxas: number
   material: number
-  fixos: number
+  custos_studio: number
+  /** faturamento − imposto − taxas − material − custos do studio */
+  lucro: number
+  pro_labore: number
+  /** lucro − pró-labore: o que fica na empresa */
   sobra: number
   minutos: number
   /** null quando não há atendimentos */
@@ -81,7 +116,7 @@ export interface ResultadoMes {
 export function resultadoMes(
   atendimentos: Pick<Atendimento, 'valor' | 'pagamento' | 'material' | 'minutos'>[],
   p: Pick<Config, 'imposto' | 'taxa_cartao'>,
-  fixos: number,
+  custos: CustosSeparados,
 ): ResultadoMes {
   let faturamento = 0
   let cartao = 0
@@ -96,19 +131,23 @@ export function resultadoMes(
   const imposto = faturamento * n(p.imposto)
   const taxas = cartao * n(p.taxa_cartao)
   const quantidade = atendimentos.length
+  const lucro = faturamento - imposto - taxas - material - custos.studio
   return {
     faturamento,
     quantidade,
     imposto,
     taxas,
     material,
-    fixos,
-    sobra: faturamento - imposto - taxas - material - fixos,
+    custos_studio: custos.studio,
+    lucro,
+    pro_labore: custos.pro_labore,
+    sobra: lucro - custos.pro_labore,
     minutos,
     ticket: quantidade ? faturamento / quantidade : null,
     por_hora: minutos > 0 ? faturamento / (minutos / 60) : null,
   }
 }
+
 
 export interface ProgressoMeta {
   progresso: number // 0 a 1

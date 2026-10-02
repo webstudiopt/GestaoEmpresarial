@@ -7,7 +7,13 @@ import { ConfirmButton, NumeroInput, Vazio } from '../components/ui'
 import { Calendario } from '../components/Calendario'
 import { BarraGoogle, ListaAgendados } from '../components/GoogleAgenda'
 import { useAgendaGoogle } from '../data/useAgendaGoogle'
-import { interpretarTitulo, jaRegistrado, type EventoInterpretado } from '../lib/agendaGoogle'
+import { chaveNome, useClientes } from '../data/useClientes'
+import {
+  atendimentoDoEvento,
+  interpretarEvento,
+  separarParaImportar,
+  type EventoInterpretado,
+} from '../lib/agendaGoogle'
 
 interface Form {
   data: string
@@ -19,9 +25,12 @@ interface Form {
 }
 
 export function Atendimentos({ mes, setMes }: { mes: string; setMes: (m: string) => void }) {
-  const { atendimentos, servicos, inserir, atualizar, excluir } = useDados()
+  const { atendimentos, servicos, inserir, inserirVarios, atualizar, excluir } = useDados()
+  const { clientes: fichas, idsDasClientes } = useClientes()
   const ordenados = useMemo(() => ordenarServicos(servicos), [servicos])
-  const primeiro = ordenados[0]
+  // No formulário entram só os ativos; preço especial fica num grupo à parte.
+  const ativos = ordenados.filter((s) => s.ativo !== false)
+  const primeiro = ativos.find((s) => s.tipo_preco !== 'especial') ?? ativos[0]
 
   const vazio = (): Form => ({
     data: hojeISO(),
@@ -36,10 +45,13 @@ export function Atendimentos({ mes, setMes }: { mes: string; setMes: (m: string)
   const [salvando, setSalvando] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
 
-  const clientes = useMemo(
-    () => [...new Set(atendimentos.map((a) => a.cliente.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
-    [atendimentos],
-  )
+  // Autocompletar: fichas de clientes + nomes já usados em atendimentos.
+  const clientes = useMemo(() => {
+    const porChave = new Map<string, string>()
+    for (const nome of [...fichas.map((c) => c.nome), ...atendimentos.map((a) => a.cliente)])
+      if (nome.trim() && !porChave.has(chaveNome(nome))) porChave.set(chaveNome(nome), nome.trim())
+    return [...porChave.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }, [fichas, atendimentos])
 
   // Dia escolhido no calendário; ao trocar de mês volta a mostrar o mês todo.
   const [diaEscolhido, setDiaEscolhido] = useState<string | null>(null)
@@ -76,12 +88,10 @@ export function Atendimentos({ mes, setMes }: { mes: string; setMes: (m: string)
   const pendentes = useMemo(
     () =>
       google.eventos
-        .map((ev) => {
-          const { cliente, servico } = interpretarTitulo(ev.titulo, servicos)
-          return { ...ev, cliente, servico, registrado: jaRegistrado({ data: ev.data, cliente }, atendimentos) }
-        })
-        .filter((ev) => !ev.registrado),
-    [google.eventos, servicos, atendimentos],
+        .map((ev) => interpretarEvento(ev, { servicos, clientes: fichas, atendimentos }))
+        .filter((ev) => !ev.registrado)
+        .sort((a, b) => a.data.localeCompare(b.data) || a.hora.localeCompare(b.hora)),
+    [google.eventos, servicos, fichas, atendimentos],
   )
   const agendados = useMemo(() => {
     const c = new Map<string, number>()
@@ -89,6 +99,31 @@ export function Atendimentos({ mes, setMes }: { mes: string; setMes: (m: string)
     return c
   }, [pendentes])
   const pendentesVisiveis = diaSel ? pendentes.filter((ev) => ev.data === diaSel) : pendentes
+
+  // Importar todos: vale para o mês inteiro, mesmo com um dia selecionado.
+  const separados = useMemo(() => separarParaImportar(pendentes, hojeISO()), [pendentes])
+  const ficam = [
+    separados.futuros.length &&
+      `${separados.futuros.length} ${separados.futuros.length === 1 ? 'horário futuro fica' : 'horários futuros ficam'} para depois do dia`,
+    separados.semServico.length &&
+      `${separados.semServico.length} sem serviço (cliente nova) ${separados.semServico.length === 1 ? 'precisa' : 'precisam'} ser ${separados.semServico.length === 1 ? 'registrado' : 'registrados'} um a um`,
+  ]
+    .filter(Boolean)
+    .join('; ')
+
+  async function importarTodos() {
+    const ids = await idsDasClientes(separados.prontos.map((ev) => ev.cliente))
+    if (!ids) return
+    const linhas = separados.prontos.map((ev) => ({
+      ...atendimentoDoEvento({ ...ev, servico: ev.servico! }),
+      cliente_id: ev.cliente_id ?? ids.get(chaveNome(ev.cliente)) ?? null,
+    }))
+    await inserirVarios(
+      'atendimentos',
+      linhas,
+      `${linhas.length} ${linhas.length === 1 ? 'atendimento importado' : 'atendimentos importados'}`,
+    )
+  }
 
   function registrarDaAgenda(ev: EventoInterpretado) {
     setEditando(null)
@@ -157,16 +192,23 @@ export function Atendimentos({ mes, setMes }: { mes: string; setMes: (m: string)
           minutos: s?.minutos ?? 0,
           material: s?.material ?? 0,
         }
+    setSalvando(true)
+    // Liga à ficha da cliente (cria a ficha se for a primeira vez).
+    const ids = await idsDasClientes([f.cliente])
+    if (!ids) {
+      setSalvando(false)
+      return
+    }
     const linha = {
       data: f.data,
       cliente: f.cliente.trim(),
+      cliente_id: ids.get(chaveNome(f.cliente)) ?? null,
       servico_id: f.servico_id || null,
       ...copia,
       valor: f.valor,
       pagamento: f.pagamento,
       obs: f.obs.trim(),
     }
-    setSalvando(true)
     if (editando) {
       const ok = await atualizar('atendimentos', editando.id, linha, 'Atendimento atualizado')
       if (ok) cancelar()
@@ -195,7 +237,11 @@ export function Atendimentos({ mes, setMes }: { mes: string; setMes: (m: string)
         {daAgenda && (
           <p className="form__aviso">
             Da Google Agenda: “{daAgenda.titulo}”.{' '}
-            {daAgenda.servico ? 'Confira o pagamento e toque em Registrar.' : 'Escolha o serviço, confira e registre.'}
+            {!daAgenda.servico
+              ? 'Escolha o serviço, confira e registre.'
+              : daAgenda.origem_servico === 'historico'
+                ? `Serviço sugerido pelo último que ela fez (${daAgenda.servico.nome}): confira e registre.`
+                : 'Confira o pagamento e toque em Registrar.'}
           </p>
         )}
         <label className="campo">
@@ -229,7 +275,7 @@ export function Atendimentos({ mes, setMes }: { mes: string; setMes: (m: string)
               </option>
             )}
             {CATEGORIAS.map((cat) => {
-              const doGrupo = ordenados.filter((s) => s.categoria === cat)
+              const doGrupo = ativos.filter((s) => s.categoria === cat && s.tipo_preco !== 'especial')
               if (!doGrupo.length) return null
               return (
                 <optgroup key={cat} label={cat}>
@@ -241,6 +287,23 @@ export function Atendimentos({ mes, setMes }: { mes: string; setMes: (m: string)
                 </optgroup>
               )
             })}
+            {ativos.some((s) => s.tipo_preco === 'especial') && (
+              <optgroup label="Preços especiais">
+                {ativos
+                  .filter((s) => s.tipo_preco === 'especial')
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nome} · {brl0(s.preco)}
+                    </option>
+                  ))}
+              </optgroup>
+            )}
+            {/* serviço desativado ainda aparece ao editar um atendimento antigo dele */}
+            {f.servico_id && !ativos.some((s) => s.id === f.servico_id) && servicoSelecionado && (
+              <option value={servicoSelecionado.id}>
+                {servicoSelecionado.nome} · {brl0(servicoSelecionado.preco)} (desativado)
+              </option>
+            )}
           </select>
         </label>
         <label className="campo">
@@ -293,7 +356,14 @@ export function Atendimentos({ mes, setMes }: { mes: string; setMes: (m: string)
           </button>
         </div>
       )}
-      <ListaAgendados eventos={pendentesVisiveis} mostrarDia={!diaSel} onRegistrar={registrarDaAgenda} />
+      <ListaAgendados
+        eventos={pendentesVisiveis}
+        mostrarDia={!diaSel}
+        onRegistrar={registrarDaAgenda}
+        importaveis={separados.prontos.length}
+        ficam={ficam ? ficam + '.' : ''}
+        onImportarTodos={importarTodos}
+      />
       {dias.length === 0 ? (
         <Vazio>
           {diaSel ? 'Nenhum atendimento neste dia.' : 'Nenhum atendimento neste mês ainda.'}

@@ -30,7 +30,10 @@ export function ordenarServicos<T extends Pick<Servico, 'categoria' | 'ordem' | 
 }
 
 export function gruposCatalogo(servicos: Servico[]): GrupoCatalogo[] {
-  const visiveis = ordenarServicos(servicos.filter((s) => s.no_catalogo))
+  // Preço especial (amigas, permuta) e serviço desativado nunca aparecem para a cliente.
+  const visiveis = ordenarServicos(
+    servicos.filter((s) => s.no_catalogo && s.ativo !== false && s.tipo_preco !== 'especial'),
+  )
   return CATEGORIAS.map((categoria) => ({
     categoria,
     titulo: TITULO_GRUPO[categoria],

@@ -7,6 +7,7 @@ import { motivoErro, supabase } from '../lib/supabase'
 import {
   CONFIG_PADRAO,
   type Atendimento,
+  type Cliente,
   type Config,
   type Custo,
   type Historico,
@@ -20,6 +21,7 @@ interface Tabelas {
   servicos: Servico
   custos: Custo
   atendimentos: Atendimento
+  clientes: Cliente
   reservas: ReservaObjetivo
   reserva: Reserva
   historico: Historico
@@ -32,6 +34,7 @@ const ORDEM: { [K in NomeTabela]: (a: Tabelas[K], b: Tabelas[K]) => number } = {
   servicos: (a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'),
   custos: (a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'),
   atendimentos: (a, b) => b.data.localeCompare(a.data) || b.criado_em.localeCompare(a.criado_em),
+  clientes: (a, b) => a.nome.localeCompare(b.nome, 'pt-BR'),
   reservas: (a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'),
   reserva: (a, b) => b.data.localeCompare(a.data),
   historico: (a, b) => a.mes.localeCompare(b.mes),
@@ -41,7 +44,7 @@ const ORDEM: { [K in NomeTabela]: (a: Tabelas[K], b: Tabelas[K]) => number } = {
 const NUMERICOS: Partial<Record<NomeTabela, string[]>> = {
   servicos: ['preco', 'minutos', 'material', 'ordem'],
   custos: ['valor', 'ordem'],
-  atendimentos: ['valor', 'minutos', 'material'],
+  atendimentos: ['valor', 'minutos', 'material', 'taxa_repassada'],
   reservas: ['meta', 'ordem'],
   reserva: ['valor'],
   historico: ['total'],
@@ -69,7 +72,10 @@ function normalizarConfig(c: Config): Config {
 
 interface DadosApi extends Listas {
   config: Config
+  /** aviso vazio ('') grava sem mostrar aviso de sucesso */
   inserir: <K extends NomeTabela>(t: K, row: Partial<Tabelas[K]>, aviso?: string) => Promise<Tabelas[K] | null>
+  /** grava várias linhas de uma vez (todas ou nenhuma); devolve as linhas gravadas, ou null se falhar */
+  inserirVarios: <K extends NomeTabela>(t: K, rows: Partial<Tabelas[K]>[], aviso: string) => Promise<Tabelas[K][] | null>
   atualizar: <K extends NomeTabela>(t: K, id: string, patch: Partial<Tabelas[K]>, aviso?: string) => Promise<boolean>
   excluir: (t: NomeTabela, id: string) => Promise<boolean>
   salvarConfig: (patch: Partial<Config>) => Promise<boolean>
@@ -84,7 +90,15 @@ export function useDados() {
   return v
 }
 
-const VAZIO: Listas = { servicos: [], custos: [], atendimentos: [], reservas: [], reserva: [], historico: [] }
+const VAZIO: Listas = {
+  servicos: [],
+  custos: [],
+  atendimentos: [],
+  clientes: [],
+  reservas: [],
+  reserva: [],
+  historico: [],
+}
 
 export function DadosProvider({ userId, children }: { userId: string; children: ReactNode }) {
   const toast = useToast()
@@ -154,8 +168,25 @@ export function DadosProvider({ userId, children }: { userId: string; children: 
       }
       const linha = normalizar(t, data as never)
       trocar(t, (l) => [...l, linha])
-      toast(aviso)
+      if (aviso) toast(aviso)
       return linha
+    },
+    [toast, trocar],
+  )
+
+  // Várias linhas numa gravação só: entram todas ou nenhuma.
+  const inserirVarios = useCallback<DadosApi['inserirVarios']>(
+    async (t, rows, aviso) => {
+      if (!rows.length) return []
+      const { data, error } = await supabase.from(t).insert(rows as never).select()
+      if (error) {
+        toast('Não salvou: ' + motivoErro(error), 'erro')
+        return null
+      }
+      const linhas = (data ?? []).map((r) => normalizar(t, r as never))
+      trocar(t, (l) => [...l, ...linhas])
+      if (aviso) toast(aviso)
+      return linhas
     },
     [toast, trocar],
   )
@@ -214,12 +245,13 @@ export function DadosProvider({ userId, children }: { userId: string; children: 
         ...listas,
         config,
         inserir,
+        inserirVarios,
         atualizar,
         excluir,
         salvarConfig,
         recarregar: () => setTentativa((n) => n + 1),
       },
-    [listas, config, inserir, atualizar, excluir, salvarConfig],
+    [listas, config, inserir, inserirVarios, atualizar, excluir, salvarConfig],
   )
 
   if (erro)

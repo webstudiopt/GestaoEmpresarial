@@ -1,9 +1,10 @@
 // Interpreta eventos da Google Agenda. Funções puras (testadas em agendaGoogle.test.ts).
-// O título do evento deve ter o nome da cliente e o serviço, em qualquer ordem:
-// "Ana - Soft Hyper", "Soft Hyper + Ana", "Ana | manutenção soft", "Ana Soft Hyper".
+// Na agenda da Ana o título é "Nome telefone" (ex.: "Maria 31 99999-1234").
+// A cliente é achada pelos 8 últimos dígitos do telefone; o serviço vem do título,
+// se estiver lá ("Ana - Soft"), ou do último serviço que essa cliente fez.
 
 import { hojeISO } from './format'
-import type { Atendimento, Servico } from './types'
+import type { Atendimento, Cliente, Servico } from './types'
 
 export interface EventoAgenda {
   id: string
@@ -14,7 +15,13 @@ export interface EventoAgenda {
 
 export interface EventoInterpretado extends EventoAgenda {
   cliente: string
+  /** só dígitos; vazio se o título não tiver telefone */
+  telefone: string
+  /** ficha da cliente, se achada pelo telefone ou pelo nome */
+  cliente_id: string | null
   servico: Servico | null
+  /** de onde veio o serviço: escrito no título ou o último que ela fez */
+  origem_servico: 'titulo' | 'historico' | null
   registrado: boolean
 }
 
@@ -78,18 +85,83 @@ export function interpretarTitulo(titulo: string, servicos: Servico[]): { client
   return { cliente: limpar(cliente), servico }
 }
 
-/** Já existe atendimento no mesmo dia para essa cliente? ("Ana" casa com "Ana Paula") */
+/**
+ * Já existe atendimento no mesmo dia para essa cliente?
+ * Casa pela ficha (cliente_id) ou pelo nome ("Ana" casa com "Ana Paula").
+ */
 export function jaRegistrado(
-  ev: { data: string; cliente: string },
-  atendimentos: Pick<Atendimento, 'data' | 'cliente'>[],
+  ev: { data: string; cliente: string; cliente_id?: string | null },
+  atendimentos: (Pick<Atendimento, 'data' | 'cliente'> & { cliente_id?: string | null })[],
 ) {
   const c = normalizar(ev.cliente)
-  if (!c) return false
+  if (!c && !ev.cliente_id) return false
   return atendimentos.some((a) => {
     if (a.data !== ev.data) return false
+    if (ev.cliente_id && a.cliente_id === ev.cliente_id) return true
     const outro = normalizar(a.cliente)
-    return outro === c || outro.startsWith(c + ' ') || c.startsWith(outro + ' ')
+    return !!c && (outro === c || outro.startsWith(c + ' ') || c.startsWith(outro + ' '))
   })
+}
+
+/** Últimos 8 dígitos: a chave da cliente, com ou sem DDD e o 9 na frente. */
+export const chaveTelefone = (telefone: string) => telefone.replace(/\D/g, '').slice(-8)
+
+/** Tira o telefone do título: "Maria 31 99999-1234" → { telefone: "31999991234", resto: "Maria" }. */
+export function separarTelefone(titulo: string): { telefone: string; resto: string } {
+  for (const m of titulo.matchAll(/\+?\(?\d[\d\s().-]*\d/g)) {
+    const digitos = m[0].replace(/\D/g, '')
+    if (digitos.length >= 8 && digitos.length <= 13) {
+      const resto = titulo.slice(0, m.index) + ' ' + titulo.slice((m.index ?? 0) + m[0].length)
+      return { telefone: digitos, resto: limpar(resto) }
+    }
+  }
+  return { telefone: '', resto: titulo }
+}
+
+export interface ContextoAgenda {
+  servicos: Servico[]
+  clientes: Pick<Cliente, 'id' | 'nome' | 'telefone'>[]
+  atendimentos: (Pick<Atendimento, 'data' | 'cliente' | 'servico_id' | 'servico_nome'> & {
+    cliente_id?: string | null
+  })[]
+}
+
+/** Lê um evento: cliente pelo telefone, serviço pelo título ou pelo histórico, e se já foi registrado. */
+export function interpretarEvento(ev: EventoAgenda, ctx: ContextoAgenda): EventoInterpretado {
+  const ativos = ctx.servicos.filter((s) => s.ativo !== false)
+  const { telefone, resto } = separarTelefone(ev.titulo)
+  const doTitulo = interpretarTitulo(resto, ativos)
+
+  const chave = chaveTelefone(telefone)
+  const ficha =
+    (chave.length === 8 && ctx.clientes.find((c) => c.telefone && chaveTelefone(c.telefone) === chave)) ||
+    (doTitulo.cliente && ctx.clientes.find((c) => normalizar(c.nome) === normalizar(doTitulo.cliente))) ||
+    null
+  const cliente = ficha ? ficha.nome : doTitulo.cliente
+
+  let servico = doTitulo.servico
+  let origem_servico: EventoInterpretado['origem_servico'] = servico ? 'titulo' : null
+  if (!servico && cliente) {
+    // último atendimento dela; os antigos guardam o nome da época ("Soft Hyper" → "Soft")
+    const ultimo = ctx.atendimentos
+      .filter((a) => (ficha && a.cliente_id === ficha.id) || normalizar(a.cliente) === normalizar(cliente))
+      .sort((a, b) => b.data.localeCompare(a.data))[0]
+    if (ultimo) {
+      servico =
+        ativos.find((s) => s.id === ultimo.servico_id) ?? encontrarServico(ultimo.servico_nome, ativos) ?? null
+      if (servico) origem_servico = 'historico'
+    }
+  }
+
+  return {
+    ...ev,
+    cliente,
+    telefone,
+    cliente_id: ficha ? ficha.id : null,
+    servico,
+    origem_servico,
+    registrado: jaRegistrado({ data: ev.data, cliente, cliente_id: ficha ? ficha.id : null }, ctx.atendimentos),
+  }
 }
 
 interface ItemApi {
@@ -109,5 +181,41 @@ export function eventoDaApi(item: ItemApi): EventoAgenda | null {
     titulo: (item.summary ?? '').trim(),
     data: hojeISO(d),
     hora: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+  }
+}
+
+export const OBS_IMPORTADO = 'Importado da Google Agenda'
+
+/**
+ * Separa os horários pendentes para importar de uma vez.
+ * Entram só os de hoje para trás com serviço reconhecido: horário futuro
+ * ainda pode ter falta ou remarcação e não deve contar no faturamento.
+ */
+export function separarParaImportar(pendentes: EventoInterpretado[], hoje: string) {
+  const prontos: EventoInterpretado[] = []
+  const semServico: EventoInterpretado[] = []
+  const futuros: EventoInterpretado[] = []
+  for (const ev of pendentes) {
+    if (ev.data > hoje) futuros.push(ev)
+    else if (!ev.servico || !ev.cliente) semServico.push(ev)
+    else prontos.push(ev)
+  }
+  return { prontos, semServico, futuros }
+}
+
+/** Atendimento gerado de um evento (cópia do serviço, como no registro manual). */
+export function atendimentoDoEvento(ev: EventoInterpretado & { servico: Servico }) {
+  return {
+    data: ev.data,
+    cliente: ev.cliente,
+    cliente_id: ev.cliente_id,
+    servico_id: ev.servico.id,
+    servico_nome: ev.servico.nome,
+    categoria: ev.servico.categoria,
+    valor: ev.servico.preco,
+    minutos: ev.servico.minutos,
+    material: ev.servico.material,
+    pagamento: 'Pix' as const,
+    obs: `${OBS_IMPORTADO} (${ev.hora})${ev.origem_servico === 'historico' ? ' · serviço pelo histórico, confira' : ''}`,
   }
 }

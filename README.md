@@ -72,16 +72,20 @@ Em **Authentication → URL Configuration**, coloque o endereço do Pages em **S
 
 ## 7. Google Agenda (opcional)
 
-Em **Atendimentos**, o app pode ler os horários marcados na Google Agenda e mostrar os que ainda não foram registrados. O título do evento precisa ter **nome da cliente + serviço**, em qualquer ordem:
+Em **Atendimentos**, o app lê os horários marcados na Google Agenda e mostra os que ainda não viraram atendimento. Na agenda da Ana o título é **"Nome telefone"**:
 
-| Título do evento | Cliente | Serviço |
-| --- | --- | --- |
-| `Ana - Soft Hyper` | Ana | Soft Hyper |
-| `Soft Hyper + Beatriz` | Beatriz | Soft Hyper |
-| `Carla \| manutenção soft` | Carla | Manutenção Soft |
-| `Daniela lash lifting` | Daniela | Lash Lifting |
+| Título do evento | O app entende |
+| --- | --- |
+| `Gabi (31) 9 9988-1234` | Ficha da cliente pelos **8 últimos dígitos** do telefone (aparece "Gabi Teixeira"). Serviço: **o último que ela fez**, marcado "(último que fez)". |
+| `Maria 31 91111-2222` | Telefone não cadastrado: acha a ficha pelo nome. |
+| `Joana 31 97777-0000` | Cliente nova: ganha ficha ao registrar; o serviço ela escolhe no formulário. |
+| `Helena 31 95555-4444 - penteado` | Serviço escrito no título vale mais que o histórico. |
 
-Acento e maiúsculas não importam. Dá para abreviar quando não houver dúvida (`soft` vira Soft Hyper). Tocar em **Registrar** preenche o formulário (data, cliente, serviço e valor). Ela confere o pagamento e confirma. Nada é gravado sozinho. Eventos de dia inteiro e cancelados ficam de fora. O app só **lê** a agenda, nunca altera.
+- **Registrar:** preenche o formulário, e ela confere e confirma.
+- **Importar até hoje:** grava de uma vez os horários de hoje para trás que tenham serviço, com pagamento Pix. A observação indica quando o serviço veio do histórico.
+- **O que fica de fora:** horários futuros, eventos de dia inteiro e cancelados.
+- **Sem duplicar:** quem já tem atendimento no dia, pela ficha ou pelo nome, não aparece.
+- **Só leitura:** o app nunca altera a agenda.
 
 ### Configurar (uma vez)
 
@@ -121,20 +125,22 @@ Quando sai versão nova, o app se atualiza sozinho na próxima abertura.
 As fórmulas ficam em [`src/lib/calc.ts`](src/lib/calc.ts), testadas em [`src/lib/calc.test.ts`](src/lib/calc.test.ts).
 
 ```
-fixos_total  = soma dos custos fixos
-hora_custo   = fixos_total / horas_mes
-taxa_media   = taxa_cartao * 0.15          (só ~15% das vendas passam no cartão)
+custos do studio  = soma dos custos sem pró-labore (a locação das salas entra negativa e abate)
+hora_studio       = custos do studio / horas_mes
+hora_pro_labore   = pró-labore / horas_mes
 
-Por serviço
-custo_real   = (minutos/60) * hora_custo + material
-minimo       = custo_real / (1 - imposto - taxa_media - lucro_alvo)
-lucro        = preco * (1 - imposto - taxa_media) - custo_real
-selo         = "Dá prejuízo" se preco < custo_real / (1 - imposto)
-               "Abaixo do mínimo" se preco < minimo
-               senão "Saudável"
+Por serviço (h = minutos / 60; a taxa da maquininha é repassada para a cliente)
+custo_real          = h * hora_studio + material
+lucro               = preco * (1 - imposto) - custo_real
+sobra_apos_salario  = lucro - h * hora_pro_labore
+preco_minimo        = (custo_real + h * hora_pro_labore) / (1 - imposto)
+selo                = "Prejuízo" se lucro <= 0
+                      "Abaixo da sua hora" se sobra_apos_salario < 0
+                      senão "Saudável"
 
 Por mês
-sobra        = faturamento - imposto - taxas de cartão (crédito e débito) - material - fixos_total
+lucro da empresa    = faturamento - imposto - taxas (só se não repassada) - material - custos do studio
+sobra               = lucro da empresa - pró-labore
 ```
 
 Detalhes:

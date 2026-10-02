@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useDados } from '../data/Dados'
-import { fixosTotal, maisVendidos, progressoMeta, resultadoMes, serieFaturamento } from '../lib/calc'
+import { maisVendidos, progressoMeta, resultadoMes, separarCustos, serieFaturamento } from '../lib/calc'
 import { brl, brl0, decimal, mesCurto, nomeMes, pct } from '../lib/format'
 import { Barra, Kpi } from '../components/ui'
 import { ResumoReservas } from './Reserva'
@@ -9,11 +9,12 @@ export function Painel({ mes }: { mes: string }) {
   const { atendimentos, custos, servicos, historico, config } = useDados()
 
   const doMes = useMemo(() => atendimentos.filter((a) => a.data.startsWith(mes)), [atendimentos, mes])
-  const fixos = fixosTotal(custos)
-  const r = resultadoMes(doMes, config, fixos)
+  const r = resultadoMes(doMes, config, separarCustos(custos))
 
   // Sem atendimentos no mês, estima pelo preço médio do catálogo.
-  const precos = servicos.filter((s) => s.no_catalogo && s.preco > 0).map((s) => s.preco)
+  const precos = servicos
+    .filter((s) => s.no_catalogo && s.ativo !== false && s.tipo_preco !== 'especial' && s.preco > 0)
+    .map((s) => s.preco)
   const ticketRef = r.ticket ?? (precos.length ? precos.reduce((a, b) => a + b, 0) / precos.length : 0)
   const meta = progressoMeta(r.faturamento, config.meta_mes, ticketRef)
 
@@ -39,9 +40,9 @@ export function Painel({ mes }: { mes: string }) {
           sub={`${decimal(r.minutos / 60)} h trabalhadas`}
         />
         <Kpi
-          rotulo={r.sobra >= 0 ? 'Sobra depois de tudo' : 'Faltou para fechar'}
+          rotulo={r.sobra >= 0 ? 'Sobra depois do salário' : 'Faltou para o salário'}
           valor={brl0(r.sobra)}
-          sub="já com pró-labore e custos fixos"
+          sub={`lucro de ${brl0(r.lucro)} menos seu pró-labore`}
         />
       </div>
 
@@ -90,10 +91,14 @@ export function Painel({ mes }: { mes: string }) {
           <tbody>
             <LinhaDre rotulo="Faturamento" valor={r.faturamento} forte />
             <LinhaDre rotulo={`Imposto (${pct(config.imposto)})`} valor={-r.imposto} />
-            <LinhaDre rotulo={`Taxas de cartão (${pct(config.taxa_cartao)} no crédito e débito)`} valor={-r.taxas} />
+            {config.taxa_cartao > 0 && (
+              <LinhaDre rotulo={`Taxas de cartão (${pct(config.taxa_cartao)} no crédito e débito)`} valor={-r.taxas} />
+            )}
             <LinhaDre rotulo="Material usado" valor={-r.material} />
-            <LinhaDre rotulo="Custos fixos (com pró-labore)" valor={-r.fixos} />
-            <LinhaDre rotulo="Sobra" valor={r.sobra} forte />
+            <LinhaDre rotulo="Custos do studio (salas já abatidas)" valor={-r.custos_studio} />
+            <LinhaDre rotulo="Lucro da empresa" valor={r.lucro} forte />
+            <LinhaDre rotulo="Seu pró-labore" valor={-r.pro_labore} />
+            <LinhaDre rotulo="Sobra depois do salário" valor={r.sobra} forte />
           </tbody>
         </table>
       </div>
